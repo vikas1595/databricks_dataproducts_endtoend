@@ -1,0 +1,77 @@
+trigger:
+  paths:
+    include:
+      - platform-infra/**
+
+pr:
+  paths:
+    include:
+      - platform-infra/**
+
+variables:
+- group: platform-infra-vars
+- name: TF_VERSION
+  value: '1.5.7'
+
+stages:
+- stage: Dev
+  jobs:
+  - job: Terraform_Dev
+    pool: 
+      name: vm-dev-pool
+      demands:
+        - agent.name -equals ubantu-vm
+    steps:
+
+    - checkout: self
+
+    # Install Azure CLI
+    - script: |
+        echo "Installing Azure CLI..."
+        curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        az version
+      displayName: Install Azure CLI
+
+    # Install Terraform
+    - script: |
+        echo "Installing Terraform v${TF_VERSION}..."
+        sudo apt-get update -y
+        sudo apt-get install -y unzip curl
+        curl -o terraform.zip https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+        unzip terraform.zip
+        sudo mv terraform /usr/local/bin/
+        terraform version
+      displayName: Install Terraform
+
+    # Terraform init & plan
+    - script: |
+        rm -f ~/.terraformrc
+        rm -rf .terraform .terraform.lock.hcl
+
+        echo "Running Terraform init and plan..."
+        cd platform-infra/envs/dev
+
+
+        # Set ARM_* for provider authentication
+        export ARM_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID"
+        export ARM_CLIENT_ID="$AZURE_CLIENT_ID"
+        export ARM_TENANT_ID="$AZURE_TENANT_ID"
+        export ARM_CLIENT_SECRET="$AZURE_CLIENT_SECRET"
+
+
+        # Set TF_VAR_ env vars so Terraform picks them up automatically
+        export TF_VAR_subscription_id="$AZURE_SUBSCRIPTION_ID"
+        export TF_VAR_client_id="$AZURE_CLIENT_ID"
+        export TF_VAR_tenant_id="$AZURE_TENANT_ID"
+        export TF_VAR_client_secret="$AZURE_CLIENT_SECRET"
+
+        terraform init -backend-config="resource_group_name=$(TF_STATE_RG)" \
+                       -backend-config="storage_account_name=$(TF_STATE_SA)" \
+                       -backend-config="container_name=$(TF_STATE_CONTAINER)" \
+                       -backend-config="key=platform-dev.tfstate" \
+                       -backend-config="use_azuread_auth=true"
+
+        terraform validate
+        terraform plan -var-file="dev.tfvars" -out tfplan
+        terraform apply -auto-approve tfplan
+      displayName: Terraform init/plan/apply

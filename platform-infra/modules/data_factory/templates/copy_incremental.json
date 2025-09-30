@@ -1,0 +1,27 @@
+{
+  "name": "pl_copy_incremental_template",
+  "properties": {
+    "parameters": {
+      "schema": { "type": "String" },
+      "table": { "type": "String" },
+      "watermarkColumn": { "type": "String" },
+      "basePath": { "type": "String" }
+    },
+    "activities": [
+      {
+        "name": "CopySqlToAdls",
+        "type": "Copy",
+        "typeProperties": {
+          "source": {
+            "type": "SqlSource",
+            "sqlReaderQuery": "@{if(equals(pipeline().parameters.watermarkColumn,''), concat('SELECT * FROM ', pipeline().parameters.schema, '.', pipeline().parameters.table), concat('SELECT * FROM ', pipeline().parameters.schema, '.', pipeline().parameters.table, ' WHERE ', pipeline().parameters.watermarkColumn, ' > ''', formatDateTime(addHours(utcNow(), -2), 'yyyy-MM-ddTHH:mm:ssZ'), '''))}"
+          },
+          "sink": { "type": "DelimitedTextSink" },
+          "enableStaging": false
+        },
+        "inputs": [ { "referenceName": "${src_dataset}", "type": "DatasetReference" } ],
+        "outputs": [ { "referenceName": "${sink_dataset}", "type": "DatasetReference", "parameters": { "basePath": "@{pipeline().parameters.basePath}" } } ]
+      }
+    ]
+  }
+} 

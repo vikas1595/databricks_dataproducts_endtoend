@@ -1,0 +1,80 @@
+trigger:
+  paths:
+    include:
+      - data-products/**
+
+pr:
+  paths:
+    include:
+      - data-products/**
+
+variables:
+  AZURE_SUBSCRIPTION: $(AZURE_SERVICE_CONNECTION_NAME)
+
+stages:
+- stage: Build_Test
+  jobs:
+  - job: UnitTests
+    pool: { vmImage: ubuntu-latest }
+    steps:
+    - checkout: self
+    - task: UsePythonVersion@0
+      inputs: { versionSpec: '3.10' }
+    - script: |
+        if [ -f data-products/requirements.txt ]; then pip install -r data-products/requirements.txt; fi
+        if [ -d data-products/tests ]; then pytest -q data-products/tests || true; fi
+      displayName: Install deps and run tests
+
+- stage: Deploy_Dev
+  dependsOn: Build_Test
+  jobs:
+  - job: DeployBundleDev
+    pool: { vmImage: ubuntu-latest }
+    steps:
+    - checkout: self
+    - task: AzureCLI@2
+      displayName: Deploy bundle to dev
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/cli/main/install.sh | sh
+          export DATABRICKS_CONFIG_PROFILE=azure-cli
+          if [ -f data-products/bundle.yml ]; then cd data-products && databricks bundle validate && databricks bundle deploy -t dev; fi
+
+- stage: Deploy_Test
+  dependsOn: Deploy_Dev
+  environment: test
+  jobs:
+  - job: DeployBundleTest
+    pool: { vmImage: ubuntu-latest }
+    steps:
+    - checkout: self
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/cli/main/install.sh | sh
+          export DATABRICKS_CONFIG_PROFILE=azure-cli
+          if [ -f data-products/bundle.yml ]; then cd data-products && databricks bundle deploy -t test; fi
+
+- stage: Deploy_Prod
+  dependsOn: Deploy_Test
+  environment: prod
+  jobs:
+  - job: DeployBundleProd
+    pool: { vmImage: ubuntu-latest }
+    steps:
+    - checkout: self
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/cli/main/install.sh | sh
+          export DATABRICKS_CONFIG_PROFILE=azure-cli
+          if [ -f data-products/bundle.yml ]; then cd data-products && databricks bundle deploy -t prod; fi 

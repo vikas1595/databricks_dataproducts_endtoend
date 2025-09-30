@@ -1,1 +1,1 @@
-# cursur_de
+# databricks_dataproducts_e2e

@@ -1,0 +1,34 @@
+product:
+  name: sales_orders
+  owners_ad_groups:
+    - adg-sales-orders-admins
+    - adg-sales-orders-producers
+    - adg-sales-orders-consumers
+  classification: internal
+storage:
+  container: lake
+  base_path: /products/sales_orders
+governance:
+  rbac:
+    admin_group: adg-sales-orders-admins
+    producer_group: adg-sales-orders-producers
+    consumer_group: adg-sales-orders-consumers
+sources:
+  - name: sql_orders
+    type: sqlserver
+    schema: dbo
+    table: Orders
+    mode: incremental
+    watermark_column: UpdatedAt
+    schedule: "0 */2 * * *"
+    dq_rules_ref: dq/orders.yaml
+  - name: events_orders
+    type: eventhub
+    namespace: ehns-prod
+    eventhub: orders
+    consumer_group: sales-orders-bronze
+    schedule: streaming
+medallion:
+  bronze_path: /bronze/sales_orders
+  silver_path: /silver/sales_orders
+  gold_path: /gold/sales_orders 

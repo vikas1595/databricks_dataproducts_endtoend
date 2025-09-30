@@ -1,0 +1,62 @@
+bundle:
+  name: data-products
+
+artifacts: {}
+
+variables:
+  storage_account:
+    description: ADLS account name
+    default: <storage>
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://adb-xxxxxxxxx.azuredatabricks.net
+      root_path: /Workspace/Repos/data-products/dev
+    run_as:
+      service_principal_name: ${var.dev_spn:-}
+  test:
+    workspace:
+      host: https://adb-yyyyyyyyy.azuredatabricks.net
+      root_path: /Workspace/Repos/data-products/test
+  prod:
+    workspace:
+      host: https://adb-zzzzzzzzz.azuredatabricks.net
+      root_path: /Workspace/Repos/data-products/prod
+
+resources:
+  pipelines:
+    sales_orders_silver:
+      name: dlt_sales_orders_silver
+      development: false
+      clusters:
+        - num_workers: 2
+          node_type_id: Standard_DS3_v2
+      libraries:
+        - notebook:
+            path: /Workspace/Repos/data-products/dlt/silver_orders.py
+      configuration:
+        pipelines.useUC: "true"
+        bronze_path: "abfss://lake@${var.storage_account}.dfs.core.windows.net/bronze/sales_orders/sql_orders"
+        silver_path: "abfss://lake@${var.storage_account}.dfs.core.windows.net/silver/sales_orders"
+        gold_path: "abfss://lake@${var.storage_account}.dfs.core.windows.net/gold/sales_orders"
+
+  jobs:
+    sales_orders_gx_validate:
+      name: sales_orders_gx_validate
+      tasks:
+        - task_key: gx_validate
+          job_cluster_key: gx_small
+          notebook_task:
+            notebook_path: /Workspace/Repos/data-products/gx/validate_orders.py
+            base_parameters:
+              SILVER_PATH: "abfss://lake@${var.storage_account}.dfs.core.windows.net/silver/sales_orders"
+              TABLE_NAME: "orders"
+              RESULTS_TABLE: "sales_orders.gold.dq_results"
+      job_clusters:
+        - job_cluster_key: gx_small
+          new_cluster:
+            spark_version: 13.3.x-scala2.12
+            node_type_id: Standard_DS3_v2
+            num_workers: 1 

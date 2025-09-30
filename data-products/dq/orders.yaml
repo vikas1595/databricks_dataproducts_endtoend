@@ -1,0 +1,10 @@
+checks:
+  - name: id_not_null
+    expr: "id IS NOT NULL"
+    action: drop
+  - name: status_enum
+    expr: "status IN ('NEW','COMPLETE','CANCELLED')"
+    action: fail
+  - name: updated_recent
+    expr: "updated_at_ts >= now() - interval 30 days"
+    action: warn 
